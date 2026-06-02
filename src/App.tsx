@@ -12,7 +12,6 @@ export type User = {
   email: string;
 }
 
-// Componente da Barra Superior estilo macOS
 const TitleBar = () => {
   const handleAction = (action: string) => {
     if (typeof window !== 'undefined' && (window as any).require) {
@@ -35,123 +34,81 @@ const TitleBar = () => {
 export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
-  const [loadingText, setLoadingText] = useState("Iniciando motores...")
+  const [loadingText, setLoadingText] = useState("Organizando suas economias...")
 
-  // ESCUTA O ELECTRON PARA O AUTO-UPDATE REAL
+  // AUTO-UPDATE
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).require) {
       const { ipcRenderer } = (window as any).require('electron');
-      
-      // O Electron avisa que o arquivo .exe invisível terminou de baixar
       ipcRenderer.on('update-ready', () => {
         toast("Nova versão disponível!", {
           description: "O download da atualização foi concluído em segundo plano.",
-          duration: Infinity, // Fica travado na tela até clicar
-          action: {
-            label: "Atualizar agora",
-            onClick: () => {
-              // Manda a ordem para o Electron fechar o app e instalar o novo
-              ipcRenderer.send('install-update');
-            }
-          }
+          duration: Infinity,
+          action: { label: "Atualizar agora", onClick: () => ipcRenderer.send('install-update') }
         });
       });
-
-      return () => {
-        ipcRenderer.removeAllListeners('update-ready');
-      };
+      return () => ipcRenderer.removeAllListeners('update-ready');
     }
   }, []);
 
-  // ANIMAÇÃO DE CARREGAMENTO (SPLASH SCREEN)
+  // SPLASH SCREEN (15s com Frases Financeiras)
   useEffect(() => {
     if (!isAppLoading) return;
-    const texts = [
-      { time: 1000, msg: "Criptografando dados locais..." },
-      { time: 2000, msg: "Sincronizando sua carteira..." },
-      { time: 3000, msg: "Otimizando performance visual..." },
-      { time: 4000, msg: "Quase pronto para decolar..." }
+    const phrases = [
+      "Organizando suas economias...",
+      "Analisando seus investimentos...",
+      "O controle financeiro é a chave da liberdade...",
+      "Cada centavo conta...",
+      "Planejando seu futuro com inteligência...",
+      "O hábito de poupar é o primeiro passo para o sucesso."
     ];
-    texts.forEach(item => {
-      setTimeout(() => setLoadingText(item.msg), item.time);
-    });
     
-    const timer = setTimeout(() => setIsAppLoading(false), 5000);
-    return () => clearTimeout(timer);
+    let index = 0;
+    const interval = setInterval(() => {
+      index = (index + 1) % phrases.length;
+      setLoadingText(phrases[index]);
+    }, 2500);
+    
+    const timer = setTimeout(() => setIsAppLoading(false), 15000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
   }, [isAppLoading]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f7f6] relative rounded-2xl shadow-2xl">
-      {/* TOASTER GLOBAL */}
       <Toaster theme="dark" position="bottom-right" className="font-sans z-[99999]" />
-      <TitleBar />
       
-      {/* --- SPLASH SCREEN SURPREENDENTE (5 SEGUNDOS) --- */}
+      {!isAppLoading && <TitleBar />}
+      
+      {/* SPLASH SCREEN RETANGULAR ISOLADA */}
       {isAppLoading && (
-        <div className="absolute inset-0 z-[10000] bg-[#1a1a1a] flex flex-col items-center justify-center overflow-hidden">
-          
-          {/* Fundo com Blobs Animados */}
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#81c926]/10 rounded-full blur-[120px] animate-[pulse_8s_infinite]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#81c926]/5 rounded-full blur-[100px] animate-[pulse_12s_infinite]"></div>
-          
-          {/* Partículas Flutuantes */}
-          {[...Array(20)].map((_, i) => (
-            <div 
-              key={i}
-              className="absolute bg-white/10 rounded-full animate-float"
-              style={{
-                width: Math.random() * 6 + 'px',
-                height: Math.random() * 6 + 'px',
-                left: Math.random() * 100 + '%',
-                top: Math.random() * 100 + '%',
-                animationDuration: (Math.random() * 5 + 5) + 's',
-                animationDelay: (Math.random() * 5) + 's'
-              }}
-            />
-          ))}
-
-          {/* Central: Logo com Glow Neon */}
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="w-32 h-32 bg-[#2a2a2a] rounded-[2.5rem] flex items-center justify-center shadow-[0_0_50px_rgba(129,201,38,0.3)] p-6 mb-8 animate-[bounce-soft_4s_infinite_ease-in-out]">
-              <img src={logoImg} alt="Nexo Logo" className="w-full h-full object-contain animate-[spin-slow_20s_linear_infinite]" />
+        <div className="fixed inset-0 z-[10000] bg-[#1a1a1a] flex items-center justify-center">
+          <div className="w-[600px] h-[350px] bg-[#1a1a1a] border border-white/10 rounded-2xl flex flex-col items-center justify-center relative p-10 shadow-2xl overflow-hidden">
+            
+            <div className="w-20 h-20 mb-6">
+              <img src={logoImg} alt="Logo" className="w-full h-full object-contain animate-pulse" />
             </div>
             
-            <h1 className="text-white text-6xl font-black tracking-tighter mb-2 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-              Nexo<span className="text-[#81c926]">.</span>
-            </h1>
-            
-            {/* Texto Dinâmico */}
-            <p className="text-gray-400 font-medium text-sm tracking-widest uppercase h-6 animate-pulse">
-              {loadingText}
+            <h2 className="text-white text-2xl font-bold tracking-tight mb-2">Nexo Finance</h2>
+            <p className="text-gray-400 font-medium text-sm italic h-6 transition-all duration-500">
+              "{loadingText}"
             </p>
 
-            {/* Anel de Progresso Circular SVG */}
-            <div className="mt-12 relative w-16 h-16">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5" />
-                <circle 
-                  cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" 
-                  strokeDasharray={176}
-                  className="text-[#81c926] animate-[progress-circle_5s_linear_forwards]" 
-                />
-              </svg>
+            {/* Barra de progresso contida dentro das bordas arredondadas */}
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/5">
+              <div className="h-full bg-[#81c926] animate-[progress-bar_15s_linear_forwards]"></div>
             </div>
           </div>
 
           <style>{`
-            @keyframes progress-circle { 0% { stroke-dashoffset: 176; } 100% { stroke-dashoffset: 0; } }
-            @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            @keyframes bounce-soft { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
-            @keyframes float { 
-              0% { transform: translateY(0) translateX(0); opacity: 0; } 
-              50% { opacity: 0.5; }
-              100% { transform: translateY(-100vh) translateX(50px); opacity: 0; } 
-            }
+            @keyframes progress-bar { 0% { width: 0%; } 100% { width: 100%; } }
           `}</style>
         </div>
       )}
 
-      {/* ÁREA DE CONTEÚDO (LOGIN OU DASHBOARD) */}
+      {/* ÁREA DE CONTEÚDO */}
       <div className="flex-1 w-full h-full overflow-hidden">
         {!currentUser ? (
           <Login onLoginSucesso={(user) => setCurrentUser(user)} />
