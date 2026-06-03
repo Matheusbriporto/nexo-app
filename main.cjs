@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
+// Habilita logs básicos no terminal para ajudar a diagnosticar problemas de download/GitHub
+autoUpdater.logger = console;
+
 let win;
 
 function createWindow() {
@@ -63,7 +66,8 @@ app.whenReady().then(() => {
 // Gatilho para a busca MANUAL de atualizações na engrenagem
 ipcMain.on('check-for-updates-manual', () => {
   if (win) win.webContents.send('update-status', 'Buscando atualizações manualmente...');
-  autoUpdater.checkForUpdates();
+  // Executa a rotina completa idêntica ao início do app
+  autoUpdater.checkForUpdatesAndNotify();
 });
 
 // Recebe o comando do React para fechar e instalar

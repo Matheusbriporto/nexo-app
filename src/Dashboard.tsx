@@ -37,6 +37,8 @@ import {
   AlertDialogTrigger,
 } from "./components/ui/alert-dialog"
 
+import Metas, { Meta } from "./Metas";
+
 // @ts-ignore
 import logoImg from "./logo.png"
 
@@ -62,7 +64,9 @@ interface DashboardProps {
 
 export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
-  const [viewAtual, setViewAtual] = useState<'painel' | 'formulario'>('painel')
+  const [metas, setMetas] = useState<Meta[]>([])
+  
+  const [viewAtual, setViewAtual] = useState<'painel' | 'formulario' | 'metas'>('painel')
   const [tipoAtual, setTipoAtual] = useState<"entrada" | "saida">("saida")
   
   const [editandoId, setEditandoId] = useState<string | null>(null)
@@ -93,11 +97,11 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
   })
 
-  // CHAVES DINÂMICAS EXCLUSIVAS POR USUÁRIO
   const chavesDB = useMemo(() => ({
     transacoes: `@financas:${currentUser.id}:transacoes`,
     categorias: `@financas:${currentUser.id}:categorias`,
-    bancos: `@financas:${currentUser.id}:bancos`
+    bancos: `@financas:${currentUser.id}:bancos`,
+    metas: `@financas:${currentUser.id}:metas`
   }), [currentUser.id])
 
   const mesesDisponiveis = useMemo(() => {
@@ -116,12 +120,13 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
       const dbTransacoes = localStorage.getItem(chavesDB.transacoes)
       const dbCategorias = localStorage.getItem(chavesDB.categorias)
       const dbBancos = localStorage.getItem(chavesDB.bancos)
+      const dbMetas = localStorage.getItem(chavesDB.metas)
       
       if (dbTransacoes) {
         const parsed = JSON.parse(dbTransacoes)
         if (Array.isArray(parsed)) setTransacoes(parsed.filter((t: any) => t && t.id))
       } else {
-        setTransacoes([]) // Garante painel limpo se não houver dados
+        setTransacoes([])
       }
       
       if (dbCategorias) {
@@ -133,6 +138,12 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
         const parsed = JSON.parse(dbBancos)
         if (Array.isArray(parsed) && parsed.length > 0) setBancos(parsed)
       }
+
+      if (dbMetas) {
+        setMetas(JSON.parse(dbMetas))
+      } else {
+        setMetas([])
+      }
     } catch (e) {
       console.error("Erro ao carregar os dados:", e)
     }
@@ -143,16 +154,24 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
   }, [chavesDB])
 
   useEffect(() => {
-    // Salva automaticamente nos bancos de dados específicos do usuário atual
     if (transacoes.length > 0 || localStorage.getItem(chavesDB.transacoes)) {
       localStorage.setItem(chavesDB.transacoes, JSON.stringify(transacoes))
     }
+    if (metas.length > 0 || localStorage.getItem(chavesDB.metas)) {
+      localStorage.setItem(chavesDB.metas, JSON.stringify(metas))
+    }
     localStorage.setItem(chavesDB.categorias, JSON.stringify(categorias))
     localStorage.setItem(chavesDB.bancos, JSON.stringify(bancos))
-  }, [transacoes, categorias, bancos, chavesDB])
+  }, [transacoes, metas, categorias, bancos, chavesDB])
 
   const formatarMoeda = (valorNum: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNum)
+  }
+
+  const formatarValorCurto = (valor: number) => {
+    if (valor >= 1000000) return (valor / 1000000).toFixed(1) + 'M';
+    if (valor >= 1000) return (valor / 1000).toFixed(1) + 'k';
+    return valor.toString();
   }
 
   const formatarDataBr = (dataIso: string) => {
@@ -161,14 +180,26 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
     return `${partes[2]}/${partes[1]}/${partes[0]}`
   }
 
+  // ===============================================
+  // LÓGICA DAS METAS (Cálculos da Barra de Perfil)
+  // ===============================================
+  const totalAlvoMetas = metas.reduce((acc, m) => acc + m.valorAlvo, 0);
+  const totalGuardadoMetas = metas.reduce((acc, m) => acc + m.valorGuardado, 0);
+  const progressoMetas = totalAlvoMetas > 0 ? (totalGuardadoMetas / totalAlvoMetas) * 100 : 0;
+  const barrasCompletas = Math.min(8, Math.floor((progressoMetas / 100) * 8));
+
   const transacoesMesSelecionado = useMemo(() => {
     return transacoes.filter(t => t.data.startsWith(mesSelecionado))
   }, [transacoes, mesSelecionado])
 
   const receitasRealizadas = transacoesMesSelecionado.filter(t => t.tipo === "entrada" && t.status === "realizado").reduce((acc, t) => acc + t.valor, 0)
   const despesasRealizadas = transacoesMesSelecionado.filter(t => t.tipo === "saida" && t.status === "realizado").reduce((acc, t) => acc + t.valor, 0)
+  
   const saldoAtual = receitasRealizadas - despesasRealizadas
   const saldoGeralAcumulado = transacoes.filter(t => t.tipo === "entrada" && t.status === "realizado").reduce((acc, t) => acc + t.valor, 0) - transacoes.filter(t => t.tipo === "saida" && t.status === "realizado").reduce((acc, t) => acc + t.valor, 0)
+  
+  // A MÁGICA AQUI: O Saldo Livre Desconta o que está preso nos Cofres!
+  const saldoLivre = saldoGeralAcumulado + totalGuardadoMetas;
 
   const dadosSparkline = useMemo(() => {
     const partes = mesSelecionado.split('-')
@@ -379,7 +410,8 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
     toast.success("Dados do painel atualizados e gráficos recarregados!");
   }
 
-  const handleCheckForUpdates = () => {
+  const handleCheckForUpdates = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    if (e) e.preventDefault();
     if (typeof window !== 'undefined' && (window as any).require) {
       const { ipcRenderer } = (window as any).require('electron');
       ipcRenderer.send('check-for-updates-manual');
@@ -407,12 +439,14 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
           <div>
             <p className="text-[12px] font-bold text-gray-400 mb-3 px-4">Visão Geral</p>
             <nav className="space-y-1">
-              <button onClick={voltarAoPainel} className="w-full flex items-center gap-4 px-4 py-3 bg-[#f3faeb] border-l-4 border-[#81c926] text-[#81c926] font-bold rounded-r-xl transition-all">
+              <button onClick={() => setViewAtual('painel')} className={`w-full flex items-center gap-4 px-4 py-3 font-bold rounded-r-xl transition-all outline-none ${viewAtual === 'painel' ? 'bg-[#f3faeb] border-l-4 border-[#81c926] text-[#81c926]' : 'text-gray-400 hover:text-gray-700 border-l-4 border-transparent'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> Painel
               </button>
-              <a href="#" className="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-gray-700 font-semibold transition-colors border-l-4 border-transparent">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> Projetos
-              </a>
+              
+              <button onClick={() => setViewAtual('metas')} className={`w-full flex items-center gap-4 px-4 py-3 font-bold rounded-r-xl transition-all outline-none ${viewAtual === 'metas' ? 'bg-[#f3faeb] border-l-4 border-[#81c926] text-[#81c926]' : 'text-gray-400 hover:text-gray-700 border-l-4 border-transparent'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Metas
+              </button>
+
               <a href="#" className="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-gray-700 font-semibold transition-colors border-l-4 border-transparent">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg> Análises
               </a>
@@ -535,7 +569,7 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
                       <defs>
                         <linearGradient id="colorSaida" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#fff" stopOpacity={0.4}/><stop offset="95%" stopColor="#fff" stopOpacity={0}/></linearGradient>
                       </defs>
-                        <Area type="monotone" dataKey="saidas" stroke="#fff" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSaida)" />
+                      <Area type="monotone" dataKey="saidas" stroke="#fff" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSaida)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -865,6 +899,17 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
             </div>
           </div>
         )}
+
+        {/* ======================= TELA: METAS ======================= */}
+        {viewAtual === 'metas' && (
+          <Metas 
+            metas={metas} 
+            setMetas={setMetas} 
+            formatarMoeda={formatarMoeda} 
+            formatarDataBr={formatarDataBr} 
+          />
+        )}
+
       </main>
 
       {/* SIDEBAR DIREITA */}
@@ -908,14 +953,37 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
           <div className="text-center">
             <h3 className="text-lg font-extrabold tracking-wide mb-1">{currentUser?.nome || "Usuário"}</h3>
             <p className="text-[11px] text-gray-400 font-bold mb-3">{currentUser?.email || "usuario@nexo.com"}</p>
-            <div className="flex gap-1 justify-center mb-4">
-              <div className="w-8 h-1 rounded-full bg-[#81c926]"></div><div className="w-8 h-1 rounded-full bg-[#81c926]"></div><div className="w-8 h-1 rounded-full bg-[#81c926]"></div><div className="w-8 h-1 rounded-full bg-[#81c926]"></div><div className="w-8 h-1 rounded-full bg-[#81c926]"></div><div className="w-8 h-1 rounded-full bg-[#2a332e]"></div><div className="w-8 h-1 rounded-full bg-[#2a332e]"></div><div className="w-8 h-1 rounded-full bg-[#2a332e]"></div>
+            
+            <div 
+              className="flex gap-1 justify-center mb-4 cursor-pointer" 
+              onClick={() => setViewAtual('metas')} 
+              title={`Progresso Geral: ${(progressoMetas || 0).toFixed(1)}%`}
+            >
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div 
+                  key={i} 
+                  className={`w-8 h-1 rounded-full transition-colors duration-500 ${i < (barrasCompletas || 0) ? 'bg-[#81c926]' : 'bg-[#2a332e]'}`}
+                ></div>
+              ))}
             </div>
 
             <div className="flex w-full justify-between px-2 text-center mb-4">
-              <div><p className="text-base font-extrabold text-white">12</p><p className="text-[10px] text-gray-400 font-bold mt-0.5">Projetos</p></div><div className="w-px h-6 bg-[#4b5952] self-center"></div>
-              <div><p className="text-base font-extrabold text-white">5</p><p className="text-[10px] text-gray-400 font-bold mt-0.5">Contas</p></div><div className="w-px h-6 bg-[#4b5952] self-center"></div>
-              <div><p className="text-base font-extrabold text-white">8</p><p className="text-[10px] text-gray-400 font-bold mt-0.5">Avisos</p></div>
+              <div>
+                <p className="text-base font-extrabold text-white">{metas.length}</p>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Metas</p>
+              </div>
+              <div className="w-px h-6 bg-[#4b5952] self-center"></div>
+              
+              <div title={formatarMoeda(totalGuardadoMetas)}>
+                <p className="text-base font-extrabold text-white">{formatarValorCurto(totalGuardadoMetas)}</p>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Guardado</p>
+              </div>
+              <div className="w-px h-6 bg-[#4b5952] self-center"></div>
+              
+              <div title={formatarMoeda(totalAlvoMetas)}>
+                <p className="text-base font-extrabold text-white">{formatarValorCurto(totalAlvoMetas)}</p>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Objetivo</p>
+              </div>
             </div>
 
             <button className="w-full py-2.5 bg-[#81c926] text-[#2a362f] rounded-xl text-xs font-extrabold flex justify-center items-center gap-2 hover:bg-[#8ee12d] transition-colors shadow-lg shadow-[#81c926]/10 border-none outline-none"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> Editar Perfil</button>
@@ -933,10 +1001,22 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
               <div className="w-8 h-8 bg-white/5 text-[#81c926] rounded-lg flex items-center justify-center mb-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
               </div>
-              <h3 className="text-[24px] font-extrabold text-[#81c926] leading-none mb-1 truncate w-full px-2" title={formatarMoeda(saldoGeralAcumulado)}>
-                {formatarMoeda(saldoGeralAcumulado)}
+              <h3 className="text-[24px] font-extrabold text-[#81c926] leading-none mb-1 truncate w-full px-2" title={formatarMoeda(saldoLivre)}>
+                {formatarMoeda(saldoLivre)}
               </h3>
-              <p className="text-[9px] text-[#81c926]/80 font-bold uppercase tracking-wide">Saldo Acumulado</p>
+              <p className="text-[9px] text-[#81c926]/80 font-bold uppercase tracking-wide">Saldo Disponível</p>
+
+              <div className="flex justify-between w-full mt-3 border-t border-white/5 pt-3 px-2">
+                <div className="text-center">
+                   <p className="text-[9px] text-gray-400 font-bold uppercase">Geral</p>
+                   <p className="text-[11px] font-extrabold text-white">{formatarMoeda(saldoGeralAcumulado)}</p>
+                </div>
+                <div className="w-px bg-white/5 h-6 self-center"></div>
+                <div className="text-center">
+                   <p className="text-[9px] text-gray-400 font-bold uppercase">No Cofre</p>
+                   <p className="text-[11px] font-extrabold text-[#81c926]">{formatarMoeda(totalGuardadoMetas)}</p>
+                </div>
+              </div>
             </div>
             
             <div className="flex flex-col gap-2">
