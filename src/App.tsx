@@ -36,7 +36,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loadingText, setLoadingText] = useState("Organizando suas economias...")
   
-  // Memória para saber se a atualização está pronta
   const [updatePronto, setUpdatePronto] = useState(false)
 
   // ==========================================
@@ -46,35 +45,40 @@ export default function App() {
     if (typeof window !== 'undefined' && (window as any).require) {
       const { ipcRenderer } = (window as any).require('electron');
       
-      // Quando o download terminar, apenas "guarda" a informação, não mostra ainda!
-      ipcRenderer.on('update-ready', () => {
+      const handleUpdateReady = () => {
         setUpdatePronto(true);
-      });
+      };
 
-      // Os status normais (ex: "Procurando...") podem aparecer normal
-      ipcRenderer.on('update-status', (_: any, message: string) => {
-        toast(message, { duration: 4000 });
-      });
+      const handleUpdateStatus = (_: any, message: string) => {
+        // A MÁGICA AQUI: O Toast SÓ aparece se tiver usuário logado (se estiver no Dashboard)
+        if (currentUser) {
+          toast(message, { duration: 4000 });
+        }
+      };
 
+      // Adiciona os ouvintes
+      ipcRenderer.on('update-ready', handleUpdateReady);
+      ipcRenderer.on('update-status', handleUpdateStatus);
+
+      // Remove os ouvintes ao desmontar ou trocar de usuário
       return () => {
-        ipcRenderer.removeAllListeners('update-ready');
-        ipcRenderer.removeAllListeners('update-status');
+        ipcRenderer.removeListener('update-ready', handleUpdateReady);
+        ipcRenderer.removeListener('update-status', handleUpdateStatus);
       };
     }
-  }, []);
+  }, [currentUser]); // O array agora observa o currentUser para destravar o Toast
 
   // ==========================================
   // DISPARADOR DO AVISO PERMANENTE NO DASHBOARD
   // ==========================================
   useEffect(() => {
-    // Só dispara se o usuário estiver logado (currentUser) E se tiver atualização pronta
     if (currentUser && updatePronto) {
       toast("🚀 Atualização Disponível!", {
         description: "Uma nova versão do Nexo foi baixada e está pronta para ser instalada.",
-        duration: Infinity, // Fica na tela para sempre (até clicar)
+        duration: Infinity, 
         cancel: {
           label: "Fechar",
-          onClick: () => { /* Apenas fecha o toast sem fazer nada */ }
+          onClick: () => { }
         },
         action: { 
           label: "Atualizar Agora", 
@@ -86,7 +90,6 @@ export default function App() {
           } 
         }
       });
-      // Reseta a memória para não ficar duplicando o aviso
       setUpdatePronto(false);
     }
   }, [currentUser, updatePronto]);
@@ -123,11 +126,7 @@ export default function App() {
       <Toaster theme="dark" position="bottom-right" className="font-sans z-[99999]" />
       
       {isAppLoading ? (
-        /* =========================================================
-           SPLASH SCREEN: CAIXA FLUTUANTE COM FUNDO GEOMÉTRICO
-           ========================================================= */
         <div className="h-screen w-screen bg-transparent flex items-center justify-center">
-          
           <div className="w-[600px] h-[350px] bg-[#222a25] border border-white/10 rounded-2xl flex flex-col items-center justify-center relative shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden">
             
             <div className="absolute top-[-100px] left-[-80px] w-[300px] h-[300px] bg-white/[0.03] rotate-45 rounded-3xl pointer-events-none"></div>
@@ -155,9 +154,6 @@ export default function App() {
           `}</style>
         </div>
       ) : (
-        /* =========================================================
-           APP PRONTO (INTERFACE COMPLETA DO SISTEMA)
-           ========================================================= */
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f7f6] relative rounded-2xl shadow-2xl animate-in fade-in duration-500">
           
           <TitleBar />
