@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Login from './Login'
 import Dashboard from './Dashboard'
 import { Toaster, toast } from "sonner"
@@ -21,7 +21,7 @@ const TitleBar = () => {
   };
 
   return (
-    <div className="absolute top-0 left-0 w-full h-10 flex items-center px-5 z-[99999]" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+    <div className="absolute top-0 left-0 w-full h-10 flex items-center px-5 z-[999999]" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
       <div className="flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <button onClick={() => handleAction('window-close')} className="w-3.5 h-3.5 rounded-full bg-[#ff5f56] hover:bg-[#e0443e] border border-black/10 shadow-sm outline-none transition-colors" title="Fechar" />
         <button onClick={() => handleAction('window-minimize')} className="w-3.5 h-3.5 rounded-full bg-[#ffbd2e] hover:bg-[#dea123] border border-black/10 shadow-sm outline-none transition-colors" title="Minimizar" />
@@ -35,23 +35,65 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loadingText, setLoadingText] = useState("Organizando suas economias...")
+  
+  // Memória para saber se a atualização está pronta
+  const [updatePronto, setUpdatePronto] = useState(false)
 
-  // AUTO-UPDATE
+  // ==========================================
+  // AUTO-UPDATE - CAPTADOR DE EVENTOS
+  // ==========================================
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).require) {
       const { ipcRenderer } = (window as any).require('electron');
+      
+      // Quando o download terminar, apenas "guarda" a informação, não mostra ainda!
       ipcRenderer.on('update-ready', () => {
-        toast("Nova versão disponível!", {
-          description: "O download da atualização foi concluído em segundo plano.",
-          duration: Infinity,
-          action: { label: "Atualizar agora", onClick: () => ipcRenderer.send('install-update') }
-        });
+        setUpdatePronto(true);
       });
-      return () => ipcRenderer.removeAllListeners('update-ready');
+
+      // Os status normais (ex: "Procurando...") podem aparecer normal
+      ipcRenderer.on('update-status', (_: any, message: string) => {
+        toast(message, { duration: 4000 });
+      });
+
+      return () => {
+        ipcRenderer.removeAllListeners('update-ready');
+        ipcRenderer.removeAllListeners('update-status');
+      };
     }
   }, []);
 
-  // SPLASH SCREEN (15s com Frases Financeiras)
+  // ==========================================
+  // DISPARADOR DO AVISO PERMANENTE NO DASHBOARD
+  // ==========================================
+  useEffect(() => {
+    // Só dispara se o usuário estiver logado (currentUser) E se tiver atualização pronta
+    if (currentUser && updatePronto) {
+      toast("🚀 Atualização Disponível!", {
+        description: "Uma nova versão do Nexo foi baixada e está pronta para ser instalada.",
+        duration: Infinity, // Fica na tela para sempre (até clicar)
+        cancel: {
+          label: "Fechar",
+          onClick: () => { /* Apenas fecha o toast sem fazer nada */ }
+        },
+        action: { 
+          label: "Atualizar Agora", 
+          onClick: () => {
+            if (typeof window !== 'undefined' && (window as any).require) {
+              const { ipcRenderer } = (window as any).require('electron');
+              ipcRenderer.send('install-update');
+            }
+          } 
+        }
+      });
+      // Reseta a memória para não ficar duplicando o aviso
+      setUpdatePronto(false);
+    }
+  }, [currentUser, updatePronto]);
+
+  // ==========================================
+  // SPLASH SCREEN (15s)
+  // ==========================================
   useEffect(() => {
     if (!isAppLoading) return;
     const phrases = [
@@ -77,28 +119,34 @@ export default function App() {
   }, [isAppLoading]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f7f6] relative rounded-2xl shadow-2xl">
+    <>
       <Toaster theme="dark" position="bottom-right" className="font-sans z-[99999]" />
       
-      {!isAppLoading && <TitleBar />}
-      
-      {/* SPLASH SCREEN RETANGULAR ISOLADA */}
-      {isAppLoading && (
-        <div className="fixed inset-0 z-[10000] bg-[#1a1a1a] flex items-center justify-center">
-          <div className="w-[600px] h-[350px] bg-[#1a1a1a] border border-white/10 rounded-2xl flex flex-col items-center justify-center relative p-10 shadow-2xl overflow-hidden">
+      {isAppLoading ? (
+        /* =========================================================
+           SPLASH SCREEN: CAIXA FLUTUANTE COM FUNDO GEOMÉTRICO
+           ========================================================= */
+        <div className="h-screen w-screen bg-transparent flex items-center justify-center">
+          
+          <div className="w-[600px] h-[350px] bg-[#222a25] border border-white/10 rounded-2xl flex flex-col items-center justify-center relative shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden">
             
-            <div className="w-20 h-20 mb-6">
-              <img src={logoImg} alt="Logo" className="w-full h-full object-contain animate-pulse" />
-            </div>
-            
-            <h2 className="text-white text-2xl font-bold tracking-tight mb-2">Nexo Finance</h2>
-            <p className="text-gray-400 font-medium text-sm italic h-6 transition-all duration-500">
-              "{loadingText}"
-            </p>
+            <div className="absolute top-[-100px] left-[-80px] w-[300px] h-[300px] bg-white/[0.03] rotate-45 rounded-3xl pointer-events-none"></div>
+            <div className="absolute bottom-[-80px] right-[-80px] w-[250px] h-[250px] bg-white/[0.02] rounded-full pointer-events-none"></div>
+            <div className="absolute bottom-[-50px] left-[-50px] w-[250px] h-[250px] bg-[#81c926]/15 rounded-full blur-[70px] pointer-events-none"></div>
 
-            {/* Barra de progresso contida dentro das bordas arredondadas */}
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/5">
-              <div className="h-full bg-[#81c926] animate-[progress-bar_15s_linear_forwards]"></div>
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="w-20 h-20 mb-6">
+                <img src={logoImg} alt="Logo" className="w-full h-full object-contain animate-pulse" />
+              </div>
+              
+              <h2 className="text-white text-2xl font-bold tracking-tight mb-2">Nexo Finance</h2>
+              <p className="text-[#a4b5ac] font-medium text-sm italic h-6 transition-all duration-500 text-center px-8">
+                "{loadingText}"
+              </p>
+            </div>
+
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/5 z-20">
+              <div className="h-full bg-[#81c926] shadow-[0_0_10px_#81c926] animate-[progress-bar_15s_linear_forwards]"></div>
             </div>
           </div>
 
@@ -106,16 +154,23 @@ export default function App() {
             @keyframes progress-bar { 0% { width: 0%; } 100% { width: 100%; } }
           `}</style>
         </div>
-      )}
+      ) : (
+        /* =========================================================
+           APP PRONTO (INTERFACE COMPLETA DO SISTEMA)
+           ========================================================= */
+        <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f7f6] relative rounded-2xl shadow-2xl animate-in fade-in duration-500">
+          
+          <TitleBar />
 
-      {/* ÁREA DE CONTEÚDO */}
-      <div className="flex-1 w-full h-full overflow-hidden">
-        {!currentUser ? (
-          <Login onLoginSucesso={(user) => setCurrentUser(user)} />
-        ) : (
-          <Dashboard currentUser={currentUser} onLogout={() => setCurrentUser(null)} />
-        )}
-      </div>
-    </div>
+          <div className="flex-1 w-full h-full overflow-hidden">
+            {!currentUser ? (
+              <Login onLoginSucesso={(user) => setCurrentUser(user)} />
+            ) : (
+              <Dashboard currentUser={currentUser} onLogout={() => setCurrentUser(null)} />
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

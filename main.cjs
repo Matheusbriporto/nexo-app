@@ -1,52 +1,94 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
-const path = require('path')
-// Importa o sistema de auto-update
-const { autoUpdater } = require('electron-updater')
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
-function createWindow () {
-  const win = new BrowserWindow({
+let win;
+
+function createWindow() {
+  win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    frame: false,
-    transparent: true,
+    frame: false, // Remove a barra padrão do Windows
+    transparent: true, // Permite que a Splash Screen fique flutuando
     backgroundColor: '#00000000',
+    icon: path.join(__dirname, 'icon.ico'), // O seu ícone na barra de tarefas
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     }
-  })
-
-  win.loadFile(path.join(__dirname, 'dist', 'index.html'))
-
-  // Escutadores para os botões estilo macOS
-  ipcMain.on('window-minimize', () => win.minimize());
-  ipcMain.on('window-maximize', () => win.isMaximized() ? win.unmaximize() : win.maximize());
-  ipcMain.on('window-close', () => win.close());
-
-  // AUTO-UPDATER: Avisa o React que a nova versão já foi baixada no fundo
-  autoUpdater.on('update-downloaded', () => {
-    win.webContents.send('update-ready');
   });
+
+  // Em produção, ele carrega a pasta dist. 
+  // (Caso teste localmente com npm start, use win.loadURL('http://localhost:5173'))
+  win.loadFile(path.join(__dirname, 'dist', 'index.html'));
 }
 
 app.whenReady().then(() => {
-  createWindow()
-  
-  // Assim que o app abre, ele vai na nuvem checar se tem versão nova
-  autoUpdater.checkForUpdatesAndNotify()
+  createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+  // Inicia a busca automática por atualizações assim que abre
+  autoUpdater.checkForUpdatesAndNotify();
+
+  // ==========================================
+  // RADARES DE ATUALIZAÇÃO (Mandam msg pro App)
+  // ==========================================
+  autoUpdater.on('checking-for-update', () => {
+    if (win) win.webContents.send('update-status', 'Procurando atualizações no servidor...');
+  });
+
+  autoUpdater.on('update-available', () => {
+    if (win) win.webContents.send('update-status', 'Oba! Atualização encontrada. Baixando em segundo plano...');
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (win) win.webContents.send('update-status', 'Seu aplicativo já está na versão mais recente!');
+  });
+
+  autoUpdater.on('error', (err) => {
+    if (win) win.webContents.send('update-status', 'Erro ao buscar update: ' + err.message);
+  });
+
+  // Gatilho final: Download terminou
+  autoUpdater.on('update-downloaded', () => {
+    if (win) win.webContents.send('update-ready');
+  });
+});
+
+// ==========================================
+// COMANDOS RECEBIDOS DO REACT (IPC)
+// ==========================================
+
+// Gatilho para a busca MANUAL de atualizações na engrenagem
+ipcMain.on('check-for-updates-manual', () => {
+  if (win) win.webContents.send('update-status', 'Buscando atualizações manualmente...');
+  autoUpdater.checkForUpdates();
+});
+
+// Recebe o comando do React para fechar e instalar
+ipcMain.on('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
+// Controles manuais da barra de título do Windows
+ipcMain.on('window-minimize', () => {
+  if (win) win.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (win) {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (win) win.close();
+});
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-
-// AUTO-UPDATER: Escuta o React mandar instalar a atualização
-ipcMain.on('install-update', () => {
-  autoUpdater.quitAndInstall()
-})
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});

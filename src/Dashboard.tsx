@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -379,6 +379,15 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
     toast.success("Dados do painel atualizados e gráficos recarregados!");
   }
 
+  const handleCheckForUpdates = () => {
+    if (typeof window !== 'undefined' && (window as any).require) {
+      const { ipcRenderer } = (window as any).require('electron');
+      ipcRenderer.send('check-for-updates-manual');
+    } else {
+      toast.info("A verificação de atualizações funciona apenas na versão instalada.");
+    }
+  };
+
   const catSelectValue = categoria || (categorias.length > 0 ? categorias[0] : undefined);
   const bancoSelectValue = banco || (bancos.length > 0 ? bancos[0] : undefined);
 
@@ -526,7 +535,7 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
                       <defs>
                         <linearGradient id="colorSaida" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#fff" stopOpacity={0.4}/><stop offset="95%" stopColor="#fff" stopOpacity={0}/></linearGradient>
                       </defs>
-                      <Area type="monotone" dataKey="saidas" stroke="#fff" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSaida)" />
+                        <Area type="monotone" dataKey="saidas" stroke="#fff" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSaida)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -864,9 +873,26 @@ export default function Dashboard({ currentUser, onLogout }: DashboardProps) {
         <div className="p-6 pt-16 flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="font-extrabold text-xl tracking-wide">Perfil</h2>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
               <div className="relative cursor-pointer hover:bg-white/10 p-1.5 rounded-full transition-colors"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg><div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-[#38433e]"></div></div>
-              <div className="cursor-pointer hover:bg-white/10 p-1.5 rounded-full transition-colors"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="cursor-pointer hover:bg-white/10 p-1.5 rounded-full transition-colors bg-transparent border-none outline-none">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-2 z-[200] rounded-2xl shadow-xl border-none bg-[#42504a] mr-4 outline-none" align="end">
+                  <button 
+                    onClick={handleCheckForUpdates}
+                    className="w-full text-left px-3 py-2.5 text-sm font-bold text-white hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 border-none outline-none"
+                  >
+                    <svg className="w-4 h-4 text-[#81c926]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Verificar Atualizações
+                  </button>
+                </PopoverContent>
+              </Popover>
+
             </div>
           </div>
 
